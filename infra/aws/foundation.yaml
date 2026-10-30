@@ -1,0 +1,458 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Description: EventMart foundation - VPC, Aurora Serverless v2, SNS/SQS event bus, ECR, KMS, Secrets Manager
+
+Parameters:
+  ClusterName:
+    Type: String
+    Default: eventmart
+
+Resources:
+  EventMartKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: EventMart encryption key (Aurora, secrets, SNS, SQS)
+      EnableKeyRotation: true
+      KeyPolicy:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: EnableRootAdministration
+            Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::${AWS::AccountId}:root"
+            Action: "kms:*"
+            Resource: "*"
+          - Sid: AllowSNSService
+            Effect: Allow
+            Principal:
+              Service: sns.amazonaws.com
+            Action:
+              - kms:GenerateDataKey*
+              - kms:Decrypt
+            Resource: "*"
+
+  EventMartKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/eventmart
+      TargetKeyId: !Ref EventMartKey
+
+  DbSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Name: eventmart/db
+      Description: EventMart Aurora master credentials
+      KmsKeyId: !Ref EventMartKey
+      GenerateSecretString:
+        SecretStringTemplate: '{"username": "eventmart_admin"}'
+        GenerateStringKey: password
+        PasswordLength: 32
+        ExcludePunctuation: true
+
+  Vpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.1.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: eventmart-vpc
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: eventmart-igw
+
+  VpcGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref Vpc
+      InternetGatewayId: !Ref InternetGateway
+
+  NatEip:
+    Type: AWS::EC2::EIP
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      Domain: vpc
+
+  NatGateway:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatEip.AllocationId
+      SubnetId: !Ref PublicSubnetA
+      Tags:
+        - Key: Name
+          Value: eventmart-nat
+
+  PublicSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.1.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: eventmart-public-a
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PublicSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.1.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: eventmart-public-b
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+        - Key: kubernetes.io/role/elb
+          Value: "1"
+
+  PrivateSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.1.11.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: eventmart-private-a
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  PrivateSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref Vpc
+      CidrBlock: 10.1.12.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+      Tags:
+        - Key: Name
+          Value: eventmart-private-b
+        - Key: !Sub "kubernetes.io/cluster/${ClusterName}"
+          Value: shared
+        - Key: kubernetes.io/role/internal-elb
+          Value: "1"
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PublicDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VpcGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetA
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnetB
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref Vpc
+
+  PrivateDefaultRoute:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NatGateway
+
+  PrivateSubnetARouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetA
+      RouteTableId: !Ref PrivateRouteTable
+
+  PrivateSubnetBRouteAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnetB
+      RouteTableId: !Ref PrivateRouteTable
+
+  DbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EventMart Aurora - MySQL from inside the VPC
+      VpcId: !Ref Vpc
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 3306
+          ToPort: 3306
+          CidrIp: 10.1.0.0/16
+
+  DbSubnetGroup:
+    Type: AWS::RDS::DBSubnetGroup
+    Properties:
+      DBSubnetGroupDescription: EventMart private subnets
+      SubnetIds:
+        - !Ref PrivateSubnetA
+        - !Ref PrivateSubnetB
+
+  AuroraCluster:
+    Type: AWS::RDS::DBCluster
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      EngineVersion: "8.0.mysql_aurora.3.10.6"
+      DatabaseName: eventmart
+      MasterUsername: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:username}}"
+      MasterUserPassword: !Sub "{{resolve:secretsmanager:${DbSecret}:SecretString:password}}"
+      StorageEncrypted: true
+      KmsKeyId: !Ref EventMartKey
+      DBSubnetGroupName: !Ref DbSubnetGroup
+      VpcSecurityGroupIds:
+        - !Ref DbSecurityGroup
+      ServerlessV2ScalingConfiguration:
+        MinCapacity: 0.5
+        MaxCapacity: 4
+      BackupRetentionPeriod: 1
+      DeletionProtection: false
+
+  AuroraInstance:
+    Type: AWS::RDS::DBInstance
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Engine: aurora-mysql
+      DBClusterIdentifier: !Ref AuroraCluster
+      DBInstanceClass: db.serverless
+      PubliclyAccessible: false
+
+  OrdersTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: eventmart-orders
+      KmsMasterKeyId: !Ref EventMartKey
+
+  PaymentsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: eventmart-payments
+      KmsMasterKeyId: !Ref EventMartKey
+
+  PaymentsQueueDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-payments-svc-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref EventMartKey
+
+  PaymentsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-payments-svc
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600
+      KmsMasterKeyId: !Ref EventMartKey
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt PaymentsQueueDlq.Arn
+        maxReceiveCount: 5
+
+  CatalogQueueDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-catalog-svc-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref EventMartKey
+
+  CatalogQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-catalog-svc
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600
+      KmsMasterKeyId: !Ref EventMartKey
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt CatalogQueueDlq.Arn
+        maxReceiveCount: 5
+
+  NotificationsQueueDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-notifications-svc-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref EventMartKey
+
+  NotificationsQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-notifications-svc
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600
+      KmsMasterKeyId: !Ref EventMartKey
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt NotificationsQueueDlq.Arn
+        maxReceiveCount: 5
+
+  OrdersQueueDlq:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-orders-svc-dlq
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: !Ref EventMartKey
+
+  OrdersQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: eventmart-orders-svc
+      VisibilityTimeout: 60
+      MessageRetentionPeriod: 345600
+      KmsMasterKeyId: !Ref EventMartKey
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt OrdersQueueDlq.Arn
+        maxReceiveCount: 5
+
+  PaymentsOrdersSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrdersTopic
+      Protocol: sqs
+      Endpoint: !GetAtt PaymentsQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event-type:
+          - order.placed
+
+  CatalogOrdersSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrdersTopic
+      Protocol: sqs
+      Endpoint: !GetAtt CatalogQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event-type:
+          - order.placed
+
+  NotificationsOrdersSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref OrdersTopic
+      Protocol: sqs
+      Endpoint: !GetAtt NotificationsQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event-type:
+          - order.placed
+
+  NotificationsPaymentsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref PaymentsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt NotificationsQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event-type:
+          - payment.succeeded
+          - payment.failed
+
+  OrdersPaymentsSubscription:
+    Type: AWS::SNS::Subscription
+    Properties:
+      TopicArn: !Ref PaymentsTopic
+      Protocol: sqs
+      Endpoint: !GetAtt OrdersQueue.Arn
+      RawMessageDelivery: true
+      FilterPolicy:
+        event-type:
+          - payment.succeeded
+          - payment.failed
+
+  CatalogRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ClusterName}/catalog"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  CartRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ClusterName}/cart"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  OrdersRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ClusterName}/orders"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  PaymentsRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ClusterName}/payments"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+  NotificationsRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "${ClusterName}/notifications"
+      ImageScanningConfiguration:
+        ScanOnPush: true
+
+Outputs:
+  VpcId:
+    Value: !Ref Vpc
+  PrivateSubnetIds:
+    Value: !Join [",", [!Ref PrivateSubnetA, !Ref PrivateSubnetB]]
+  PublicSubnetIds:
+    Value: !Join [",", [!Ref PublicSubnetA, !Ref PublicSubnetB]]
+  PrivateSubnetAId:
+    Value: !Ref PrivateSubnetA
+  PrivateSubnetBId:
+    Value: !Ref PrivateSubnetB
+  PublicSubnetAId:
+    Value: !Ref PublicSubnetA
+  PublicSubnetBId:
+    Value: !Ref PublicSubnetB
+  DbEndpoint:
+    Value: !GetAtt AuroraCluster.Endpoint.Address
+  DbPort:
+    Value: !GetAtt AuroraCluster.Endpoint.Port
+  DbSecretArn:
+    Value: !Ref DbSecret
+  KmsKeyArn:
+    Value: !GetAtt EventMartKey.Arn
+  OrdersTopicArn:
+    Value: !Ref OrdersTopic
+  PaymentsTopicArn:
+    Value: !Ref PaymentsTopic
+  PaymentsQueueUrl:
+    Value: !Ref PaymentsQueue
+  CatalogQueueUrl:
+    Value: !Ref CatalogQueue
+  NotificationsQueueUrl:
+    Value: !Ref NotificationsQueue
+  OrdersQueueUrl:
+    Value: !Ref OrdersQueue
+  EcrRegistry:
+    Value: !Sub "${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com"

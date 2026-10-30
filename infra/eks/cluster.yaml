@@ -1,0 +1,41 @@
+apiVersion: eksctl.io/v1alpha5
+kind: ClusterConfig
+
+metadata:
+  name: eventmart
+  region: us-east-1
+  tags:
+    project: eventmart
+
+iam:
+  withOIDC: true
+
+vpc:
+  id: "vpc-03e6c2384d5cfde0b"
+  clusterEndpoints:
+    publicAccess: true
+    privateAccess: true
+  subnets:
+    private:
+      us-east-1a:
+        id: "subnet-04e09f0e8d1844c42"
+      us-east-1b:
+        id: "subnet-0314b5fb8d5c7d680"
+    public:
+      us-east-1a:
+        id: "subnet-023b9155c0f305ee7"
+      us-east-1b:
+        id: "subnet-0f9c91fa57620cf60"
+
+managedNodeGroups:
+  - name: eventmart-general
+    instanceType: t3.medium
+    desiredCapacity: 2
+    minSize: 2
+    maxSize: 4
+    privateNetworking: true
+    volumeSize: 20
+    volumeType: gp3
+    tags:
+      project: eventmart
+
