@@ -1,0 +1,35 @@
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: eventmart-root
+      MYSQL_DATABASE: eventmart
+      MYSQL_USER: eventmart
+      MYSQL_PASSWORD: eventmart
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -peventmart-root --silent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  api:
+    build: ./services/monolith
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      PORT: "3000"
+    ports:
+      - "3010:3000"
+
+volumes:
+  mysql-data:
