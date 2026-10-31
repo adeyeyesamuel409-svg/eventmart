@@ -27,7 +27,7 @@ $providers = Invoke-Aws @("iam", "list-open-id-connect-providers", "--query", "O
 if ($providers -notmatch [regex]::Escape($oidcArn)) {
     Invoke-Aws @("iam", "create-open-id-connect-provider",
         "--url", "https://$oidcProvider",
-        "--thumbprint-list", "6938fd4d98bab03faadb97b34396831e3780aea1",
+        "--thumbprint-list", "cabd2a79a1076a31f21d253635cb039d4329a5e8", "6938fd4d98bab03faadb97b34396831e3780aea1",
         "--client-id-list", "sts.amazonaws.com") | Out-Null
     Write-Host "Created $oidcArn"
 } else {
