@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "PublishDomainEvents",
+      "Effect": "Allow",
+      "Action": ["sns:Publish"],
+      "Resource": [
+        "arn:aws:sns:us-east-1:588170396448:eventmart-orders",
+        "arn:aws:sns:us-east-1:588170396448:eventmart-payments"
+      ]
+    },
+    {
+      "Sid": "ConsumeDomainEvents",
+      "Effect": "Allow",
+      "Action": [
+        "sqs:ReceiveMessage",
+        "sqs:DeleteMessage",
+        "sqs:GetQueueAttributes",
+        "sqs:ChangeMessageVisibility"
+      ],
+      "Resource": [
+        "arn:aws:sqs:us-east-1:588170396448:eventmart-payments-svc",
+        "arn:aws:sqs:us-east-1:588170396448:eventmart-notifications-svc",
+        "arn:aws:sqs:us-east-1:588170396448:eventmart-orders-svc"
+      ]
+    },
+    {
+      "Sid": "DecryptEncryptedTopicsAndQueues",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt", "kms:GenerateDataKey*"],
+      "Resource": ["arn:aws:kms:us-east-1:588170396448:key/e1d8e9d5-27a8-40be-9fdc-4c792e5b9748"]
+    }
+  ]
+}

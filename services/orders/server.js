@@ -1,5 +1,6 @@
 const express = require("express");
-const { init } = require("./src/db");
+const { init, pool } = require("./src/db");
+const { startEventConsumer } = require("./src/events");
 const ordersRouter = require("./src/routes/orders");
 
 const app = express();
@@ -42,8 +43,22 @@ app.use((err, req, res, next) => {
 
 const port = process.env.PORT || 3000;
 
+const ORDERS_QUEUE_URL = process.env.ORDERS_QUEUE_URL || "";
+
 init()
   .then(() => {
+    if (ORDERS_QUEUE_URL) {
+      startEventConsumer(ORDERS_QUEUE_URL, async (event) => {
+        if (event.eventType === "payment.succeeded") {
+          await pool.query("UPDATE orders SET status = 'paid' WHERE id = ?", [event.data.orderId]);
+          console.log(`order ${event.data.orderId} marked paid`);
+        } else if (event.eventType === "payment.failed") {
+          await pool.query("UPDATE orders SET status = 'payment_failed' WHERE id = ?", [event.data.orderId]);
+          console.log(`order ${event.data.orderId} marked payment_failed`);
+        }
+      });
+      console.log("consuming payment events from", ORDERS_QUEUE_URL);
+    }
     app.listen(port, () => {
       console.log(`eventmart-orders is ready and listening on port ${port}`);
     });

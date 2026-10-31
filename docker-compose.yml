@@ -16,6 +16,27 @@ services:
       timeout: 3s
       retries: 20
 
+  localstack:
+    image: localstack/localstack:3
+    ports:
+      - "4576:4566"
+    environment:
+      SERVICES: sns,sqs
+      DEBUG: "0"
+
+  localstack-init:
+    image: localstack/localstack:3
+    depends_on:
+      - localstack
+    entrypoint: /bin/sh
+    command: ["/init-events.sh"]
+    environment:
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./infra/localstack/init-events.sh:/init-events.sh
+
   catalog:
     build: ./services/catalog
     depends_on:
@@ -36,6 +57,8 @@ services:
     depends_on:
       mysql:
         condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
       catalog:
         condition: service_started
     environment:
@@ -45,9 +68,60 @@ services:
       DB_PASSWORD: eventmart
       DB_NAME: eventmart
       CATALOG_URL: http://catalog:3000
+      ORDERS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:eventmart-orders
+      ORDERS_QUEUE_URL: http://localstack:4566/000000000000/eventmart-orders-svc
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
       PORT: "3000"
     ports:
       - "3013:3000"
+
+  payments:
+    build: ./services/payments
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      PAYMENTS_QUEUE_URL: http://localstack:4566/000000000000/eventmart-payments-svc
+      PAYMENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:eventmart-payments
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      PORT: "3000"
+    ports:
+      - "3014:3000"
+
+  notifications:
+    build: ./services/notifications
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack-init:
+        condition: service_completed_successfully
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      NOTIFICATIONS_QUEUE_URL: http://localstack:4566/000000000000/eventmart-notifications-svc
+      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      PORT: "3000"
+    ports:
+      - "3015:3000"
 
   cart:
     build: ./services/cart

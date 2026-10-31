@@ -1,0 +1,64 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: payments
+  namespace: eventmart
+  labels:
+    app: payments
+    project: eventmart
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: payments
+  template:
+    metadata:
+      labels:
+        app: payments
+    spec:
+      serviceAccountName: eventmart-events
+      containers:
+        - name: payments
+          image: 588170396448.dkr.ecr.us-east-1.amazonaws.com/eventmart/payments:latest
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 3000
+          envFrom:
+            - configMapRef:
+                name: eventmart-config
+            - secretRef:
+                name: eventmart-db
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 250m
+              memory: 256Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: payments
+  namespace: eventmart
+  labels:
+    app: payments
+    project: eventmart
+spec:
+  selector:
+    app: payments
+  ports:
+    - port: 3000
+      targetPort: 3000

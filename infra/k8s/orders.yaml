@@ -16,6 +16,7 @@ spec:
       labels:
         app: orders
     spec:
+      serviceAccountName: eventmart-events
       containers:
         - name: orders
           image: 588170396448.dkr.ecr.us-east-1.amazonaws.com/eventmart/orders:latest

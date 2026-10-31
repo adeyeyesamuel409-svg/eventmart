@@ -1,10 +1,12 @@
 const { randomUUID } = require("node:crypto");
 const express = require("express");
 const { pool } = require("../db");
+const { publishEvent } = require("../events");
 
 const router = express.Router();
 
 const CATALOG_URL = process.env.CATALOG_URL || "http://localhost:3011";
+const ORDERS_TOPIC_ARN = process.env.ORDERS_TOPIC_ARN || "";
 
 const SELECT = "SELECT id, status, total_cents AS totalCents, created_at AS createdAt FROM orders";
 
@@ -83,12 +85,18 @@ router.post("/", async (req, res) => {
   } finally {
     conn.release();
   }
-  res.status(201).json({
+  const order = {
     id,
     status: "placed",
     totalCents,
     items: items.map(({ productId, quantity, name, unitPriceCents }) => ({ productId, quantity, name, unitPriceCents })),
-  });
+  };
+  if (ORDERS_TOPIC_ARN) {
+    publishEvent(ORDERS_TOPIC_ARN, "order.placed", order).catch((err) =>
+      console.error("failed to publish order.placed", err)
+    );
+  }
+  res.status(201).json(order);
 });
 
 router.get("/:id", async (req, res) => {

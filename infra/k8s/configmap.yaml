@@ -6,8 +6,14 @@ metadata:
   labels:
     project: eventmart
 data:
+  AWS_REGION: us-east-1
   DB_HOST: eventmart-foundation-auroracluster-thpi4q0eoywq.cluster-cux0qmaqsld2.us-east-1.rds.amazonaws.com
   DB_PORT: "3306"
   DB_NAME: eventmart
   CATALOG_URL: http://catalog:3000
   ORDERS_URL: http://orders:3000
+  ORDERS_TOPIC_ARN: arn:aws:sns:us-east-1:588170396448:eventmart-orders
+  PAYMENTS_TOPIC_ARN: arn:aws:sns:us-east-1:588170396448:eventmart-payments
+  ORDERS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/588170396448/eventmart-orders-svc
+  PAYMENTS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/588170396448/eventmart-payments-svc
+  NOTIFICATIONS_QUEUE_URL: https://sqs.us-east-1.amazonaws.com/588170396448/eventmart-notifications-svc
