@@ -12,7 +12,10 @@
           "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
         },
         "StringLike": {
-          "token.actions.githubusercontent.com:sub": "repo:adeyeyesamuel409-svg/eventmart:ref:refs/heads/main"
+          "token.actions.githubusercontent.com:sub": [
+            "repo:adeyeyesamuel409-svg@254750583/eventmart@1439611474:ref:refs/heads/main",
+            "repo:adeyeyesamuel409-svg/eventmart:ref:refs/heads/main"
+          ]
         }
       }
     }
