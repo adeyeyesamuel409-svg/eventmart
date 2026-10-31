@@ -1,0 +1,49 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrLogin",
+      "Effect": "Allow",
+      "Action": ["ecr:GetAuthorizationToken"],
+      "Resource": "*"
+    },
+    {
+      "Sid": "EcrPush",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload"
+      ],
+      "Resource": [
+        "arn:aws:ecr:us-east-1:588170396448:repository/eventmart/catalog",
+        "arn:aws:ecr:us-east-1:588170396448:repository/eventmart/cart",
+        "arn:aws:ecr:us-east-1:588170396448:repository/eventmart/orders",
+        "arn:aws:ecr:us-east-1:588170396448:repository/eventmart/payments",
+        "arn:aws:ecr:us-east-1:588170396448:repository/eventmart/notifications"
+      ]
+    },
+    {
+      "Sid": "EksDescribe",
+      "Effect": "Allow",
+      "Action": ["eks:DescribeCluster"],
+      "Resource": "arn:aws:eks:us-east-1:588170396448:cluster/eventmart"
+    },
+    {
+      "Sid": "ReadDbSecret",
+      "Effect": "Allow",
+      "Action": ["secretsmanager:GetSecretValue"],
+      "Resource": "arn:aws:secretsmanager:us-east-1:588170396448:secret:eventmart/db-*"
+    },
+    {
+      "Sid": "DecryptDbSecret",
+      "Effect": "Allow",
+      "Action": ["kms:Decrypt"],
+      "Resource": ["arn:aws:kms:us-east-1:588170396448:key/e1d8e9d5-27a8-40be-9fdc-4c792e5b9748"]
+    }
+  ]
+}

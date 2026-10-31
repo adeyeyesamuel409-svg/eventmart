@@ -1,0 +1,94 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Start stack (services + LocalStack + MySQL)
+        run: docker compose up --build -d
+
+      - name: Wait for services
+        run: |
+          for i in $(seq 1 45); do
+            if curl -sf http://localhost:3011/health >/dev/null 2>&1; then
+              echo "stack is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "services did not become healthy"
+          docker compose logs
+          exit 1
+
+      - name: Run smoke tests
+        run: node test/smoke.mjs
+
+      - name: Dump logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Login to ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push images
+        run: |
+          REGISTRY=${{ steps.login-ecr.outputs.registry }}
+          SHA=${GITHUB_SHA::12}
+          for svc in catalog cart orders payments notifications; do
+            docker build \
+              -t "$REGISTRY/eventmart/$svc:latest" \
+              -t "$REGISTRY/eventmart/$svc:$SHA" \
+              "services/$svc"
+            docker push "$REGISTRY/eventmart/$svc:latest"
+            docker push "$REGISTRY/eventmart/$svc:$SHA"
+          done
+
+      - name: Deploy to EKS
+        shell: pwsh
+        run: |
+          aws eks update-kubeconfig --name eventmart --region us-east-1
+          ./infra/deploy-apps.ps1
+
+      - name: Roll out new images
+        run: |
+          aws eks update-kubeconfig --name eventmart --region us-east-1
+          for app in catalog cart orders payments notifications; do
+            kubectl rollout restart "deployment/$app" -n eventmart
+          done
+          for app in catalog cart orders payments notifications; do
+            kubectl rollout status "deployment/$app" -n eventmart --timeout=180s
+          done
