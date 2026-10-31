@@ -1,0 +1,16 @@
+{
+  "name": "eventmart-orders",
+  "version": "1.0.0",
+  "description": "EventMart orders service - order creation and queries",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "mysql2": "^3.14.0"
+  }
+}

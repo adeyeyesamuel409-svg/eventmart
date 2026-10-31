@@ -16,6 +16,60 @@ services:
       timeout: 3s
       retries: 20
 
+  catalog:
+    build: ./services/catalog
+    depends_on:
+      mysql:
+        condition: service_healthy
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      PORT: "3000"
+    ports:
+      - "3011:3000"
+
+  orders:
+    build: ./services/orders
+    depends_on:
+      mysql:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      CATALOG_URL: http://catalog:3000
+      PORT: "3000"
+    ports:
+      - "3013:3000"
+
+  cart:
+    build: ./services/cart
+    depends_on:
+      mysql:
+        condition: service_healthy
+      catalog:
+        condition: service_started
+      orders:
+        condition: service_started
+    environment:
+      DB_HOST: mysql
+      DB_PORT: "3306"
+      DB_USER: eventmart
+      DB_PASSWORD: eventmart
+      DB_NAME: eventmart
+      CATALOG_URL: http://catalog:3000
+      ORDERS_URL: http://orders:3000
+      PORT: "3000"
+    ports:
+      - "3012:3000"
+
   api:
     build: ./services/monolith
     depends_on:

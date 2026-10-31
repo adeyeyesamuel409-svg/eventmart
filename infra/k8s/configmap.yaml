@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: eventmart-config
+  namespace: eventmart
+  labels:
+    project: eventmart
+data:
+  DB_HOST: eventmart-foundation-auroracluster-thpi4q0eoywq.cluster-cux0qmaqsld2.us-east-1.rds.amazonaws.com
+  DB_PORT: "3306"
+  DB_NAME: eventmart
+  CATALOG_URL: http://catalog:3000
+  ORDERS_URL: http://orders:3000
