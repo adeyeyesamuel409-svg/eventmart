@@ -37,5 +37,20 @@ foreach ($app in "catalog", "orders", "cart", "payments", "notifications") {
     if (-not $?) { throw "deployment $app did not become ready" }
 }
 
+Write-Host "Waiting for ALB to provision (2-3 min)..."
+$albHost = ""
+for ($i = 0; $i -lt 36; $i++) {
+    $albHost = kubectl get ingress eventmart -n eventmart -o jsonpath='{.status.loadBalancer.ingress[0].hostname}' 2>$null
+    if ($albHost) { break }
+    Start-Sleep -Seconds 5
+}
+
 Write-Host "Deployed. Pods:"
 kubectl get pods -n eventmart
+if ($albHost) {
+    Write-Host ""
+    Write-Host "Public API URL: http://$albHost"
+    Write-Host "Verify with:    `$env:GATEWAY_URL='http://$albHost'; node test/smoke.mjs"
+} else {
+    Write-Host "ALB hostname not available yet. Check later with: kubectl get ingress -n eventmart"
+}

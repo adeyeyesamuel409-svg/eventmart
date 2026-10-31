@@ -1,0 +1,60 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: eventmart
+  namespace: eventmart
+  labels:
+    project: eventmart
+  annotations:
+    alb.ingress.kubernetes.io/scheme: internet-facing
+    alb.ingress.kubernetes.io/target-type: ip
+    alb.ingress.kubernetes.io/healthcheck-path: /health
+    alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
+    alb.ingress.kubernetes.io/actions.index: '{"type":"fixed-response","fixedResponseConfig":{"contentType":"application/json","statusCode":"200","messageBody":"{\"name\":\"eventmart\",\"status\":\"ok\",\"description\":\"EventMart API - path-based routing to microservices\",\"endpoints\":{\"products\":\"/products\",\"carts\":\"/carts\",\"orders\":\"/orders\",\"payments\":\"/payments\",\"notifications\":\"/notifications\"}}"}}'
+spec:
+  ingressClassName: alb
+  rules:
+    - http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: index
+                port:
+                  name: use-annotation
+          - path: /products
+            pathType: Prefix
+            backend:
+              service:
+                name: catalog
+                port:
+                  number: 3000
+          - path: /carts
+            pathType: Prefix
+            backend:
+              service:
+                name: cart
+                port:
+                  number: 3000
+          - path: /orders
+            pathType: Prefix
+            backend:
+              service:
+                name: orders
+                port:
+                  number: 3000
+          - path: /payments
+            pathType: Prefix
+            backend:
+              service:
+                name: payments
+                port:
+                  number: 3000
+          - path: /notifications
+            pathType: Prefix
+            backend:
+              service:
+                name: notifications
+                port:
+                  number: 3000

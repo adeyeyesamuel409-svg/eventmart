@@ -1,8 +1,9 @@
-const CATALOG_URL = process.env.CATALOG_URL || "http://localhost:3011";
-const CART_URL = process.env.CART_URL || "http://localhost:3012";
-const ORDERS_URL = process.env.ORDERS_URL || "http://localhost:3013";
-const PAYMENTS_URL = process.env.PAYMENTS_URL || "http://localhost:3014";
-const NOTIFICATIONS_URL = process.env.NOTIFICATIONS_URL || "http://localhost:3015";
+const GATEWAY_URL = process.env.GATEWAY_URL || "";
+const CATALOG_URL = GATEWAY_URL || process.env.CATALOG_URL || "http://localhost:3011";
+const CART_URL = GATEWAY_URL || process.env.CART_URL || "http://localhost:3012";
+const ORDERS_URL = GATEWAY_URL || process.env.ORDERS_URL || "http://localhost:3013";
+const PAYMENTS_URL = GATEWAY_URL || process.env.PAYMENTS_URL || "http://localhost:3014";
+const NOTIFICATIONS_URL = GATEWAY_URL || process.env.NOTIFICATIONS_URL || "http://localhost:3015";
 
 const RUN_ID = Date.now();
 const SKU = (name) => `${name}-${RUN_ID}`;
@@ -42,15 +43,22 @@ const waitFor = async (fn, predicate, { attempts = 30, delayMs = 1000 } = {}) =>
 };
 
 (async () => {
-  for (const [name, base] of [
-    ["catalog", CATALOG_URL],
-    ["cart", CART_URL],
-    ["orders", ORDERS_URL],
-    ["payments", PAYMENTS_URL],
-    ["notifications", NOTIFICATIONS_URL],
-  ]) {
-    const health = await req("GET", base, "/health");
-    check(health.status === 200 && health.data.status === "ok", `${name} GET /health -> 200 ok`);
+  if (GATEWAY_URL) {
+    const root = await req("GET", CATALOG_URL, "/");
+    check(root.status === 200 && root.data.name === "eventmart", "gateway routes / -> 200 index");
+    const gateway = await req("GET", CATALOG_URL, "/products");
+    check(gateway.status === 200 && Array.isArray(gateway.data), "gateway routes /products -> 200 array");
+  } else {
+    for (const [name, base] of [
+      ["catalog", CATALOG_URL],
+      ["cart", CART_URL],
+      ["orders", ORDERS_URL],
+      ["payments", PAYMENTS_URL],
+      ["notifications", NOTIFICATIONS_URL],
+    ]) {
+      const health = await req("GET", base, "/health");
+      check(health.status === 200 && health.data.status === "ok", `${name} GET /health -> 200 ok`);
+    }
   }
 
   const book = await req("POST", CATALOG_URL, "/products", {
@@ -60,6 +68,11 @@ const waitFor = async (fn, predicate, { attempts = 30, delayMs = 1000 } = {}) =>
     stock: 10,
   });
   check(book.status === 201 && !!book.data.id, "POST /products creates product");
+  if (book.status !== 201) {
+    console.log("ABORT: catalog not reachable, remaining checks skipped");
+    console.log(`${1} CHECK(S) FAILED`);
+    process.exit(1);
+  }
 
   const mug = await req("POST", CATALOG_URL, "/products", {
     sku: SKU("MUG"),
